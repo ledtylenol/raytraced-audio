@@ -132,9 +132,9 @@ func is_enabled() -> bool:
 ## [br]This method will adjust the muffle of the played stream, as well as enable or disable it
 ## based on whether it's audible from the given [RaytracedAudioListener]
 ## [br]If you are updating this node manually, this is the method to call
-func update(listener: RaytracedAudioListener) -> void:
+func update(listener: RaytracedAudioListener, delta: float) -> void:
 	if _is_enabled:
-		_update(listener.rays_count, listener.muffle_interpolation)
+		_update(listener.rays_count, listener.muffle_interpolation, delta)
 
 	_lowpass_rays_count = 0
 	
@@ -146,7 +146,7 @@ func update(listener: RaytracedAudioListener) -> void:
 		enable()
 
 
-func _update(rays_count: int, interpolation: float):
+func _update(rays_count: int, interpolation: float, delta: float):
 	if bus == ProjectSettings.get_setting("raytraced_audio/reverb_bus"):
 		_disable()
 		return
@@ -163,7 +163,7 @@ func _update(rays_count: int, interpolation: float):
 		# So we scale frequencies down before lerping, then scale them back up
 		var log_t: float = lerpf(LOG_MIN_HZ, LOG_MAX_HZ, ratio)
 		var log_hz: float = log(lowpass.cutoff_hz) / LOG2 # Scale current frequency down:  log2(x) = ln(x) / ln(2)
-		log_hz = lerpf(log_hz, log_t, interpolation) # Lerp in scaled down space
+		log_hz = lerpf(log_hz, log_t, 1.0 - exp(-delta * interpolation)) # Lerp in scaled down space
 		lowpass.cutoff_hz = pow(2, log_hz) # Scale back up
 
 
