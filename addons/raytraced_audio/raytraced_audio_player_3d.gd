@@ -22,6 +22,8 @@ const ENABLED_GROUP_NAME: StringName = &"enabled_raytraced_audio_player_3d"
 const LOWPASS_MIN_HZ: float = 250.0
 ## The lowpass frequency when completely not-muffled (?)
 const LOWPASS_MAX_HZ: float = 20000.0
+## The factor the nyquist frequency is multiplied with to get a safe max_cutoff
+const NYQUIST_MULTIPLIER: float = 0.95
 
 ## Used in internal calculations
 const LOG2: float = log(2.0)
@@ -54,6 +56,7 @@ signal audible_distance_updated(distance: float)
 			audible_distance_updated.emit(max_distance)
 
 var _lowpass_rays_count: int = 0
+var _lowpass_max_safe_cutoff: float = LOWPASS_MAX_HZ
 var _is_enabled: bool = false
 
 
@@ -66,6 +69,9 @@ func _ready() -> void:
 	if max_distance == 0.0:
 		max_distance = calculate_audible_distance_threshold()
 		audible_distance_updated.emit(max_distance)
+	
+	# Update the lowpass limits on start
+	_lowpass_max_safe_cutoff = calculate_lowpass_limit()
 
 
 ## Enables this node
@@ -157,14 +163,16 @@ func _update(rays_count: int, interpolation: float, delta: float):
 		_disable()
 	else:
 		var ratio: float = float(_lowpass_rays_count) / float(rays_count)
+		ratio = clamp(ratio, 0, 1)
 		var lowpass: AudioEffectLowPassFilter = AudioServer.get_bus_effect(idx, 0)
 
 		# Frequencies aren't linear, they scale logarithmically (log2 space) +1 octave = 2x the frequency
 		# So we scale frequencies down before lerping, then scale them back up
 		var log_t: float = lerpf(LOG_MIN_HZ, LOG_MAX_HZ, ratio)
 		var log_hz: float = log(lowpass.cutoff_hz) / LOG2 # Scale current frequency down:  log2(x) = ln(x) / ln(2)
+
 		log_hz = lerpf(log_hz, log_t, 1.0 - exp(-delta * interpolation)) # Lerp in scaled down space
-		lowpass.cutoff_hz = pow(2, log_hz) # Scale back up
+		lowpass.cutoff_hz = min(pow(2, log_hz), _lowpass_max_safe_cutoff) # Limit at max cutoff
 
 
 # Translated from the godot repo
@@ -217,10 +225,14 @@ func calculate_audible_distance_threshold() -> float:
 			return 0.0
 
 
+## Gets the current sampling rate of the AudioServer and calculates 
+## a safe cutoff_hz value for the lowpass filter.
+func calculate_lowpass_limit() -> float:
+	var nyquist_frequency = AudioServer.get_mix_rate() * 0.5
+	return nyquist_frequency * NYQUIST_MULTIPLIER
+
+
 ## Checks wheter this [RaytracedAudioPlayer3D] is considered audible from the given position
 ## [br]See also [member audibility_threshold_db]
 func is_audible(from_pos: Vector3) -> bool:
 	return get_volume_db_from_pos(from_pos) >= audibility_threshold_db
-
-
-
