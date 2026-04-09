@@ -254,7 +254,10 @@ func setup() -> void:
 ## Clears all created rays
 func clear():
 	for ray: AudioRay in rays:
-		remove_child(ray)
+		if custom_root:
+			custom_root.remove_child(ray)
+		else:
+			remove_child(ray)
 		ray.queue_free()
 	rays.clear()
 
